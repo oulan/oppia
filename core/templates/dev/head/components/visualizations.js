@@ -151,11 +151,55 @@ oppia.factory('stateGraphArranger', [
       var maxOffsetInEachLevel = {0: 0};
 
       // Assign depths to nodes on longest path.
+      // NEW IDEA: change offsets to reflect nesting structure.
+
+      var bestPathNodeNamesToInd = {};
+      var indentationLevels = [];
+      for (var i = 0; i < bestPath.length; i++) {
+        bestPathNodeNamesToInd[bestPath[i]] = i;
+        indentationLevels.push(0);
+      }
+
+      // Find longest shortcut for nodes in [startInd, endInd] inclusive. Indent
+      // that bunch of nodes, and recurse.
+      var getBiggestShortcutAndIndent = function(startInd, endInd) {
+        var bestStart = -1;
+        var bestEnd = -1;
+
+        for (var sourceInd = startInd; sourceInd < endInd; sourceInd++) {
+          var sourceNodeName = bestPath[sourceInd];
+          for (var i = 0; i < adjacencyLists[sourceNodeName].length; i++) {
+            if (bestPathNodeNamesToInd.hasOwnProperty(adjacencyLists[sourceNodeName][i])) {
+              var targetInd = bestPathNodeNamesToInd[adjacencyLists[sourceNodeName][i]];
+
+              if (targetInd - sourceInd > bestEnd - bestStart) {
+                bestStart = sourceInd;
+                bestEnd = targetInd;
+              }
+            }
+          }
+        }
+
+        if (bestEnd - bestStart > 1) {
+          // Indent nodes in [bestStart + 1, bestEnd - 1].
+          for (var i = bestStart + 1; i < bestEnd; i++) {
+            indentationLevels[i]++;
+          }
+
+          // Recursively attempt to indent nodes before, within and after this interval.
+          getBiggestShortcutAndIndent(startInd, bestStart);
+          getBiggestShortcutAndIndent(bestStart + 1, bestEnd - 1);
+          getBiggestShortcutAndIndent(bestEnd, endInd);
+        }
+      }
+
+      getBiggestShortcutAndIndent(0, bestPath.length - 1);
+
       for (var i = 0; i < bestPath.length; i++) {
         nodeData[bestPath[i]].depth = maxDepth;
-        nodeData[bestPath[i]].offset = 0;
+        nodeData[bestPath[i]].offset = indentationLevels[i];
         nodeData[bestPath[i]].reachable = true;
-        maxOffsetInEachLevel[maxDepth] = 0;
+        maxOffsetInEachLevel[maxDepth] = indentationLevels[i];
         maxDepth++;
       }
 
