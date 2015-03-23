@@ -90,6 +90,46 @@ oppia.factory('stateGraphArranger', [
     //   - id: a unique id for the node.
     //   - label: the full label of the node.
     computeLayout: function(nodes, links, initStateId, finalStateIds) {
+      var adjacencyLists = {};
+      for (var nodeName in nodes) {
+        adjacencyLists[nodeName] = [];
+      }
+      for (var i = 0; i < links.length; i++) {
+        if (links[i].source !== links[i].target && adjacencyLists[links[i].source].indexOf(links[i].target) === -1) {
+          adjacencyLists[links[i].source].push(links[i].target);
+        }
+      }
+
+      var bestPath = [initStateId];
+      var pathSoFar = [];
+      var dfsCalls = 0;
+      var dfs = function(currentNode, currentDepth) {
+        pathSoFar.push(currentNode);
+
+        // Should we check for 'is currentNode a final state' instead?
+        if (adjacencyLists[currentNode].length === 0) {
+          if (pathSoFar.length > bestPath.length) {
+            bestPath = angular.copy(pathSoFar);
+          }
+        } else {
+          dfsCalls++;
+          if (dfsCalls <= 1000) {
+            for (var i = 0; i < adjacencyLists[currentNode].length; i++) {
+              if (pathSoFar.indexOf(adjacencyLists[currentNode][i]) === -1) {
+                dfs(adjacencyLists[currentNode][i], currentDepth + 1);
+              }
+            }
+          }
+        }
+
+        pathSoFar.pop();
+      }
+
+      // TODO: Don't recompute if graph didn't change.
+      // WARNING: may time out for large graphs.
+      // NOTE: does not take into account articulation points. See the 'Parameterized Adventure' exploration.
+      dfs(initStateId, 0);
+
       // In this implementation, nodes are snapped to a grid. We first compute
       // two additional internal variables for each node:
       //   - depth: its depth in the graph.
@@ -107,11 +147,19 @@ oppia.factory('stateGraphArranger', [
         };
       }
 
-      // Do a breadth-first search to calculate the depths and offsets.
       var maxDepth = 0;
       var maxOffsetInEachLevel = {0: 0};
-      nodeData[initStateId].depth = 0;
-      nodeData[initStateId].offset = 0;
+
+      // Assign depths to nodes on longest path.
+      for (var i = 0; i < bestPath.length; i++) {
+        nodeData[bestPath[i]].depth = maxDepth;
+        nodeData[bestPath[i]].offset = 0;
+        nodeData[bestPath[i]].reachable = true;
+        maxOffsetInEachLevel[maxDepth] = 0;
+        maxDepth++;
+      }
+
+      // Do a breadth-first search to calculate the depths and offsets for other nodes.
       var seenNodes = [initStateId];
       var queue = [initStateId];
 
@@ -121,29 +169,33 @@ oppia.factory('stateGraphArranger', [
 
         nodeData[currNodeId].reachable = true;
 
-        for (var i = 0; i < links.length; i++) {
-          // Assign depths and offsets to nodes only when they are first encountered.
-          if (links[i].source == currNodeId && seenNodes.indexOf(links[i].target) == -1) {
-            seenNodes.push(links[i].target);
-            nodeData[links[i].target].depth = nodeData[currNodeId].depth + 1;
-            nodeData[links[i].target].offset = (
-              nodeData[links[i].target].depth in maxOffsetInEachLevel ?
-              maxOffsetInEachLevel[nodeData[links[i].target].depth] + 1 : 0
-            );
+        for (var i = 0; i < adjacencyLists[currNodeId].length; i++) {
+          var linkTarget = adjacencyLists[currNodeId][i];
 
-            while (nodeData[links[i].target].offset >= MAX_NODES_PER_ROW) {
-              nodeData[links[i].target].depth += 1;
-              nodeData[links[i].target].offset = (
-                nodeData[links[i].target].depth in maxOffsetInEachLevel ?
-                maxOffsetInEachLevel[nodeData[links[i].target].depth] + 1 : 0
+          if (bestPath.indexOf(linkTarget) !== -1 && bestPath.indexOf(linkTarget) !== nodeData[currNodeId].depth + 1) {
+            if (seenNodes.indexOf(linkTarget) === -1) {
+              queue.push(linkTarget);
+            }
+            continue;
+          }
+
+          // Assign depths and offsets to nodes only when they are first encountered.
+          if (seenNodes.indexOf(linkTarget) === -1) {
+            seenNodes.push(linkTarget);
+
+            if (nodeData[linkTarget].depth === SENTINEL_DEPTH) {
+              nodeData[linkTarget].depth = nodeData[currNodeId].depth + 1;
+              nodeData[linkTarget].offset = (
+                nodeData[linkTarget].depth in maxOffsetInEachLevel ?
+                maxOffsetInEachLevel[nodeData[linkTarget].depth] + 1 : 0
               );
+              maxDepth = Math.max(maxDepth, nodeData[linkTarget].depth);
+              maxOffsetInEachLevel[nodeData[linkTarget].depth] = nodeData[linkTarget].offset;
             }
 
-            maxDepth = Math.max(maxDepth, nodeData[links[i].target].depth);
-            maxOffsetInEachLevel[nodeData[links[i].target].depth] = (
-              nodeData[links[i].target].offset);
-
-            queue.push(links[i].target);
+            if (queue.indexOf(linkTarget) === -1) {
+              queue.push(linkTarget);
+            }
           }
         }
       }
