@@ -183,7 +183,7 @@ oppia.factory('stateGraphArranger', [
         if (bestEnd - bestStart > 1) {
           // Indent nodes in [bestStart + 1, bestEnd - 1].
           for (var i = bestStart + 1; i < bestEnd; i++) {
-            indentationLevels[i]++;
+            indentationLevels[i] += 0.5;
           }
 
           // Recursively attempt to indent nodes before, within and after this interval.
